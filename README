@@ -1,0 +1,3 @@
+Program to identify authorship of an unknown work based on word frequency analysis. Requires training sets of works written by two different authors, and attempts to classify unknown works as one author or the other. Written for homework assignment 5 in my AI class.
+
+README created 2/17/2012 by Daniel Mane

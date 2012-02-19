@@ -10,9 +10,9 @@ from texts import Text, TextGroup, TextGroup_Excluded
 
 args = sys.argv
 
-DEFAULT_MIN = .02
-DEFAULT_STEP = .02
-DEFAULT_N_STEPS = 100
+DEFAULT_MIN = .1
+DEFAULT_STEP = .1
+DEFAULT_N_STEPS = 20
 
 class ClassificationManager:
     """Manages a group of documents and classifications from start to finish.
@@ -56,62 +56,65 @@ class ClassificationManager:
             if file_name.endswith(".txt"):
                 self.unknown_Texts.append(Text(file_name))
         
-        n_known_TG = len(self.known_Text_Groups)
-        n_known_documents = 0
+        self.n_known_TG = len(self.known_Text_Groups)
+        self.n_known_documents = 0
         for tg in self.known_Text_Groups:
-            n_known_documents += len(tg.documents)
-        n_unknown = len(self.unknown_Texts)
+            self.n_known_documents += len(tg.documents)
+        self.n_unknown = len(self.unknown_Texts)
         
-        print "Files loaded properly. Found {1} known documents in {0} groups; {2} unknown documents".format(n_known_TG, n_known_documents, n_unknown)
+        print "Files loaded properly. \n"+ 
+            "Found {1} known documents in {0} groups; {2} unknown documents".format(self.n_known_TG, self.n_known_documents, self.n_unknown)
                 
-    def calibration(self,psuedo_min=DEFAULT_MIN, psuedo_step=DEFAULT_STEP, 
+    def calibrate(self,psuedo_min=DEFAULT_MIN, psuedo_step=DEFAULT_STEP, 
                                                 n_steps=DEFAULT_N_STEPS):
         print("Initiating validation procedure. \n"+
                 "Results are automatically saved to ./validation.txt. \n"+
                 "Each run of validation overwrites previous results, so "+
                 "save them if you want to hold onto them.")
         print #Throw another newline for clarity
-        psuedo_sequence = arithmetic_progression(psuedo_min, psuedo_step,
+        psuedocount = arithmetic_progression(psuedo_min, psuedo_step,
                                                                     n_steps)
+        mistakes  = [0] * n_steps
+        total_diff = [0] * n_steps
         outputFile = open('validation.txt','w')
         print "Psuedocount  #Mistakes  Average Difference"
         outputFile.write("Psuedocount  #Mistakes  Average Difference\n")
-        for psuedocount in psuedo_sequence:
-            mistakes=0
-            documents_seen=0
-            total_diff=0
             
-            for group in self.known_Text_Groups:
-                other_groups = copy.copy(self.known_Text_Groups)
-                # Only shallow copy needed because we change the set of text
-                # groups, but do *not* modify the text groups themselves.
-                other_groups.remove(group)
-                # Generate list of groups to compare against. Remove the current 
-                # group so we can add an exclusion group later, i.e. group 
-                # with the validation document removed. This ensures that 
-                # the document we are validating is not included in the 
-                # training set
-                for document in group.documents:
-                    documents_seen+=1
-                    exclusion_group = TextGroup_Excluded(group,document)
-                    comparison_group = copy.copy(other_groups)
-                    # We are adding another text group, so we need another
-                    # shallow copy. 
-                    comparison_group.append(exclusion_group)
+        for group in self.known_Text_Groups:
+            other_groups = copy.copy(self.known_Text_Groups)
+            # Only shallow copy needed because we change the set of text
+            # groups, but do *not* modify the text groups themselves.
+            other_groups.remove(group)
+            # Generate list of groups to compare against. Remove the current 
+            # group so we can add an exclusion group later, i.e. group 
+            # with the validation document removed. This ensures that 
+            # the document we are validating is not included in the 
+            # training set
+            for document in group.documents:
+                exclusion_group = TextGroup_Excluded(group,document)
+                comparison_group = copy.copy(other_groups)
+                # We are adding another text group, so we need another
+                # shallow copy. 
+                comparison_group.append(exclusion_group)
+                
+                for i in xrange(n_steps):
                     classification = classify(document, comparison_group, 
-                                                psuedocount)
+                                                psuedocount[i])
                     if classification[0] == exclusion_group:
                         # We got the right classification
-                        total_diff += classification[1]
+                        total_diff[i] += classification[1]
                     else:
-                        mistakes += 1
-                        total_diff -= classification[1]
+                        mistakes[i] += 1
+                        total_diff[i] -= classification[1]
 
-            mistake_rate = float(mistakes) / documents_seen
-            average_diff = float(total_diff) / documents_seen
-            resultsString = "{0:3.2f}         {2:3.0f}            {3:5.0f}".format(psuedocount, documents_seen, mistakes, average_diff)
-            print resultsString
-            outputFile.write(resultsString + "\n")
+
+            for i in xrange(n_steps):
+                average_diff = float(total_diff[i]) / self.n_known_documents
+                results_str = "{0:3.2f}".format(psuedocount[1]) + [" "] * 9  +
+                              "{1:3.0f}".format(mistakes[i])    + [" "] * 12 + 
+                              "{2:5.0f}".format(average_diff)
+                print results_string
+                outputFile.write(results_string + "\n")
                 
     def classify_unknown(self,psuedocount=.5):
         print("Initiating classification procedure. \n "+
@@ -124,8 +127,8 @@ class ClassificationManager:
         
         for doc in self.unknown_Texts:
             cfc = classify(doc, self.known_Text_Groups, psuedocount)
-            out_string = ("{0:15s}                         ".format(cfc[0].name)+
-                    "{0:5.0f}".format(cfc[1]))
+            out_string = ("{0:15s}".format(cfc[0].name) + [" "] * 25 + 
+                         "{0:5.0f}".format(cfc[1]))
             print out_string
             outFile.write(out_string + "\n")          
 
@@ -219,36 +222,38 @@ def likelihood_comparison(text, group, psuedocount):
 
 
 def arithmetic_progression(start, step, length):
+    ret = []
     for i in xrange(length):
-        yield start + i * step
+        ret.append(start + i * step)
+    return ret
         
         
 def user_interaction():
-    choice = raw_input("Would you like to run validation or "+
-                            "start classifying or quit? (v/c/q)?")
-    while (choice != 'v' and choice != 'c' and choice != 'q'):
-        choice = input("Please choose (v)alidation or "+
-                                        "(c)classifying or (q)uit")
+    choice = raw_input("Would you like to run cali(b)ration or \n"+
+                        "(v)alidation or (c)lassification or (q)uit? (b/v/c/q)?")
+    while (choice != 'v' and choice != 'c' and choice != 'q' and choice != 'b'):
+        choice = raw_input("Please choose cali(b)ration or (v)alidation or "+
+                                        "(c)lassification or (q)uit")
     
     if choice == 'q':
         exit(0)
     
-    if choice == "v":
+    if choice == "b":
         default = "x"
         while default != "y" and default != "n":
-            default = raw_input("Would you like to run validation with the "+
+            default = raw_input("Would you like to run calibration with the "+
                     "defaults \n Min {0}, Step {1}, # steps {2}".format(
                                 DEFAULT_MIN, DEFAULT_STEP, DEFAULT_N_STEPS) +
                     " (y/n)?")
         if default == "y":
-            manager.validation()
+            manager.calibrate()
     
         else:
             p_min    = float(raw_input("Input the miniumum psuedocount:"))
             p_step   = float(raw_input("Input the psuedocount step size:"))
             p_nsteps = int(  raw_input("Input the number of steps:"))
             print
-            manager.validation(p_min,p_step,p_nsteps)
+            manager.calibrate(p_min,p_step,p_nsteps)
         user_interaction()
 
     if choice == "c":

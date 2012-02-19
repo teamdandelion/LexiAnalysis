@@ -50,8 +50,8 @@ class TextGroup:
             filePath = (pathName + "/" + file)
             if filePath.endswith(".txt"):
                 self.files.append( (filePath, file) )
-            else if filePath.beginswith("."):
-                pass
+            elif file[0]==".":
+                pass #ignore hidden files
             else:
                 print("Ignoring file: " + filePath)
         

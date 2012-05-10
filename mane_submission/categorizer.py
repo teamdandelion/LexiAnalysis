@@ -76,7 +76,7 @@ class ClassificationManager:
                 "Each run of validation overwrites previous results.")
         print #Throw another newline for clarity
         psuedo_sequence = arithmetic_progression(psuedo_min, psuedo_step,
-                                                                 n_steps)
+                                                                    n_steps)
         outputFile = open('calibration.txt','w')
         print "Psuedocount  #Mistakes  Average Difference"
         outputFile.write("Psuedocount  #Mistakes  Average Difference\n")
@@ -212,7 +212,8 @@ def likelihood_comparison(text, group, psuedocount):
     contain the Text. 
     
     """
-    #Make local copies of the dictionaries so we can alter them without causing problems
+    #Make local copies of the dictionaries so we can alter them without causing 
+    #problems
     theta_dict = copy.copy(group.dict)
     
     numWords = float(0)

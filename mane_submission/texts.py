@@ -34,12 +34,14 @@ class Text:
 class TextGroup:
     """A grouping of texts, generally texts by the same author.
     
-    Takes pathName of the directory in which to find the group, and, optionally, a name for the textGroup. Builds a dictionary for all texts in the group (equivalent to concatenation of the texts). 
+    Takes pathName of the directory in which to find the group, and, 
+    optionally, a name for the textGroup. Builds a dictionary for all texts in
+    the group (equivalent to concatenation of the texts). 
     
     """
     def __init__(self, pathName, groupName="__undefined"):
         if groupName == "__undefined":
-            self.name = pathName
+            self.name=pathName
         else:
             self.name = groupName
             

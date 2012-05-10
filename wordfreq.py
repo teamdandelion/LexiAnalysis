@@ -2,139 +2,209 @@
 #wordfreq
 import sys
 import os
-args=sys.argv
+import math
+import copy
+import pdb
+ 
+from texts import Text, TextGroup, TextGroup_Excluded
+
+args = sys.argv
 
 
-#compute distance between two texts based on word frequencies. Run from the command line; usage "distance.py filename1 filename2". 
 
-#by Daniel Mane
-
-#The 'text' class manages dictionaries for an individual text. It is never called on by the user; the distComputer class calls it.
-
-
-def determine_likely_author:
-    """Takes a Text, two (or more) TextGroups, and a psuedocount variable. Determines the likely author of the Text, """
-
-def likelihood_comparison(text_dict, group_dict, psuedocount):
-    """Generates likelihood that given Text came from given TextGroup. Takes the dictionaries (not the classes) as arguments. Subject to change.
+class ClassificationManager:
+    """Manages a group of documents and classifications from start to finish.
     
-    Note that likelihood function has no absolute meaning, since it is a log likelihood with constants disregarded. Instead, the return value may be used as a basis for comparison to decide which TextGroup is more likely to contain the Text. """"
-    #Make local copies of the dictionaries so we can alter them without causing problems
-    theta_dict = group_dict
+    Takes a name of directory containing classified training examples 
+    (organized by folder: see below), and name of a directory containing 
+    unknown unclassified examples. Will expand directory tree of classified 
+    examples and expects to find subdirectories with the group names, e.g.:
+    /Known_Examples/
+        .../Hamilton    <- contains documents known to be written by Hamilton
+        .../Madison     <- contains documents known to be written by Madison
+    /Unknown_Examples/  <- contains documents in need of classification
     
-    numWords = 0
+    Method 'validate' will validate and calibrate using the training examples; 
+    based on user input, it can try a lot of psuedocount values and report 
+    which worked best, and the user can specify psuedocount values to test
+    
+    Method 'classify' will classify the unknown documents given a user-
+    specified psuedocount
+    
+    """
+    def __init__(self,known_dir, unknown_dir):
+        self.known_Text_Groups = []
+        
+        for entry in os.listdir(known_dir):
+            path_name = known_dir + "/" + entry
+            if os.path.isdir(path_name):
+                #pdb.set_trace()################################################
+                "Presently making a known TextGroup from a known directory"
+                new_text_group = TextGroup(path_name, entry)
+                self.known_Text_Groups.append(new_text_group)
+        
+        self.unknown_Texts = []
+        for entry in os.listdir(unknown_dir):
+            file_name = unknown_dir + "/" + entry
+            if file_name.endswith(".txt"):
+                self.unknown_Texts.append(Text(file_name))
+                
+    def validation(self,psuedo_min=.01,psuedo_step=.01,n_steps=200):
+        #pdb.set_trace()
+        "Initiating validation procedure"
+        psuedo_sequence = arithmetic_progression(psuedo_min, psuedo_step,
+                                                                    n_steps)
+        
+        print "Psuedocount  #Mistakes  Average Difference"
+        for psuedocount in psuedo_sequence:
+            #pdb.set_trace()
+            "Trying a new psuedocount"
+            mistakes=0
+            documents_seen=0
+            total_diff=0
+            
+            for group in self.known_Text_Groups:
+                other_groups = copy.copy(self.known_Text_Groups)
+                # Only shallow copy needed because we change the set of text
+                # groups, but do *not* modify the text groups themselves.
+                other_groups.remove(group)
+                # Generate list of groups to compare against. Remove the current 
+                # group so we can add an exclusion group later, i.e. group 
+                # with the validation document removed. This ensures that 
+                # the document we are validating is not included in the 
+                # training set
+                for document in group.documents:
+                    #pdb.set_trace()
+                    "testing a document"
+                    documents_seen+=1
+                    exclusion_group = TextGroup_Excluded(group,document)
+                    comparison_group = copy.copy(other_groups)
+                    # We are adding another text group, so we need another
+                    # shallow copy. 
+                    comparison_group.append(exclusion_group)
+                    #pdb.set_trace()
+                    "classifying"
+                    classification = classify(document, comparison_group, 
+                                                psuedocount)
+                    if classification[0] == exclusion_group:
+                        # We got the right classification
+                        #print "{0} was classified correctly, diff {1:5.2f}".format(document.name, classification[1])
+                        total_diff += classification[1]
+                    else:
+                        mistakes += 1
+                        total_diff -= classification[1]
+                        #print "{0} was classified incorrectly, diff {1:5.2f}".format(document.name, classification[1])
+            mistake_rate = float(mistakes) / documents_seen
+            average_diff = float(total_diff) / documents_seen
+            print "{0:3.2f}         {2:3.0f}            {3:5.0f}".format(psuedocount, documents_seen, mistakes, average_diff)
+                
+
+
+
+
+
+
+
+
+
+
+def classify(text, groups, psuedocount):
+    """Classifies a text into one of the provided groups, given a psuedocount.
+    
+    Returns a tuple containing the chosen group and the difference in log-
+    likelihood between the chosen group and the second best option 
+    (for validation purposes and perhaps confidence estimation).
+    
+    """
+    comparisons = {}
+    for group in groups:
+        comparisons[group] = likelihood_comparison(text, group, psuedocount)
+        #print text.name
+        #print "{0:12s} {1:5.0f}".format(group.name, comparisons[group])
+    
+    max  = float("-inf")
+    second_max = float("-inf")
+
+    
+    for group in comparisons:
+        if comparisons[group] > second_max:
+            if comparisons[group] > max:
+                second_max = max
+                max = comparisons[group]
+                classification = group
+            else:
+                second_max = comparisons[group]
+    
+    diff = max - second_max
+    assert diff > 0
+    return (classification, diff)
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+def likelihood_comparison(text, group, psuedocount):
+    """Generates log-likelihood that given Text came from given TextGroup.
+    
+    Note that likelihood function has no absolute meaning, since it is a log-
+    likelihood with constants disregarded. Instead, the return value may be 
+    used as a basis for comparison to decide which TextGroup is more likely to 
+    contain the Text. 
+    
+    """
+    #Make local copies of the dictionaries so we can alter them without causing 
+    #problems
+    theta_dict = copy.copy(group.dict)
+    
+    numWords = float(0)
+    assert len(theta_dict)!= 0
     for word in theta_dict:
         theta_dict[word] += psuedocount
         numWords += theta_dict[word]
     
-    for word in text_dict:
+    for word in text.dict:
         if word not in theta_dict:
             theta_dict[word] = psuedocount
             numWords += psuedocount
     
-    theta={}
+    theta = {}
     
     for word in theta_dict:
-        theta[word] = localDict[word] / numWords
+        theta[word] = theta_dict[word] / numWords
+        if theta[word] == 0:
+            print "Tenemos un problema: {0}, {1}".format(theta_dict[word],numWords)
+            assert(1+1==3)
     
     loglikelihood = 0
-        for word in theta:
-            if word in text_dict:
-                loglikelihood += testDict[word] * theta[word]
+    if len(text.dict)==0:
+        print "Woahh!!!"
+    for word in text.dict:
+        #if text.name == "madison1.txt":
+            #print "Word: {0:5s} TextCount: {1:3f} GrouptCount {2:3f}".format(word, text.dict[word], theta_dict[word])
+        loglikelihood += text.dict[word] * math.log(theta[word])
+        if text.dict[word] * math.log(theta[word]) == 0:
+            print text.dict[word], math.log(theta[word])
+            assert(1+1==3)
                 
     return loglikelihood
     
-# class TextGrouping_Excluded(TextGrouping):
-#     def __init__(self, textGroup, exclusions)
-#         """Builds a dictionary excluding certain Texts form the dictionary
-#         
-#         Generally used for validation and calibration, i.e. testing the model on known sets of documents. Takes a list of Texts to exclude and generates self.excludedDict and self.excludedWordCount"""
-#         self.dict = textGroup.dict
-#         self.wordCount = textGroup.wordCount
-#         self.
-#         for text in exclusions:
-#             removalDict = text.dict
-#             for word in removalDict:
-#                 self.dict[word] -= removalDict[word]
-#                 self.wordCount  -= removalDict[word]
-#                 if self.excludedDict[word] == 0
-#                     del self.excludedDict[word]
 
-class TextGrouping:
-    """ A grouping of texts, generally texts by the same author. 
-    
-    Takes pathName of the directory in which to find the group, and, optionally, a name for the textGroup. Builds a dictionary for all texts in the group (equivalent to concatenation of the texts). Can also build excludedDicts where certain texts are removed for validation and calibration purposes"""
-    def __init__(self, pathName, groupName=pathName):
-        self.name = groupName
-        temp_filenames=os.listdir(pathName)
-        self.files=[]
-        for file in temp_filenames:
-            self.files.append(pathName+"/"+file)
-        
-        self.documents=[]
-        for file in self.files:
-            self.documents.append(Text(file))
-            
-        self.build_combined_dictionary()
 
-    def build_combined_dictionary(self):
-        """Builds a combined dictionary of all texts in the TextGroup
-        
-        Also computes number of words in the dictionary"""
-        self.dict={}
-        self.wordCount=0
-        for document in self.documents:
-            self.wordCount += document.wordCount
-            
-            if self.dict=={}:
-                self.dict=document.dict
-            else:
-                for word in document.dict:
-                    if word in self.dict:
-                        self.dict[word]+= document.dict[word]
-                    else:
-                        self.dict[word] = document.dict[word]
-    
-    def built_excluded_dictionary(self,exclusions):
-        """Builds a dictionary excluding certain Texts form the dictionary
-        
-        Generally used for validation and calibration, i.e. testing the model on known sets of documents. Takes a list of Texts to exclude and generates self.excludedDict and self.excludedWordCount"""
-        self.excludedDict = self.dict
-        self.excludedWordCount
-        for text in exclusions:
-            removalDict = text.dict
-            for word in removalDict:
-                self.excludedDict[word] -= removalDict[word]
-                self.excludedWordCount  -= removalDict[word]
-                if self.excludedDict[word] == 0
-                    del self.excludedDict[word]
-        
-    
-    def report(self):
-        for word in self.dict:
-            print(word, self.dict[word])
-        print "Word count was: ", self.wordCount
-            
-            
 
-class Text:
-    """Manages dictionary for a single text."""
-#The initialization calls on all methods needed to populate the class
-    def __init__(self, fileName):
-        file=open(fileName, 'r')
-        self.contents=file.read().split()
-        self.wordCount = len(self.contents)
-        #Splits the contents into words - note punctuation needs to be taken care of later
-        self.buildDict() 
-        #Builds the dictionary, creating self.wordCount, self.Dict
-           
-    def buildDict(self):
-        self.dict={}
-        for word in self.contents:
-            wx=word.strip('?.()[]-:!;,"\'').lower()
-            if wx in self.dict:
-                self.dict[wx]+=1
-            else:
-                self.dict[wx]=1
-                
-#TextGrouping(args[1])
+
+
+
+def arithmetic_progression(start, step, length):
+    for i in xrange(length):
+        yield start + i * step
+
+
+
+manager=ClassificationManager("Known","Unknown")
+manager.validation(float(args[1]),float(args[2]),int(args[3]))

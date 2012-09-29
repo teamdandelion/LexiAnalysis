@@ -10,8 +10,8 @@ from texts import Text, TextGroup, TextGroup_Excluded
 
 args = sys.argv
 
-DEFAULT_MIN = .1
-DEFAULT_STEP = .1
+DEFAULT_MIN     = .1
+DEFAULT_STEP    = .1
 DEFAULT_N_STEPS = 20
 
 KNOWN_DIRECTORY = "Known"
